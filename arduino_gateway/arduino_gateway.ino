@@ -10,6 +10,7 @@ Based on UKHASnet rf69_repeater by James Coxon M6JCX
 #include <string.h>
 #include "RFM69Config.h"
 #include "RFM69.h"
+#include <EtherCard.h>
 #include "NodeConfig.h"
 
 //************* Misc Setup ****************/
@@ -18,6 +19,8 @@ uint32_t count = 1, data_interval = 2;
 uint8_t data_count = 97; // 'a'
 char data[64], string_end[] = "]";
 int packet_len;
+
+byte Ethernet::buffer[500]; // tcp/ip send and receive buffer
 
 RFM69 rf69;
 
@@ -60,6 +63,22 @@ void setup()
     delay(100);
   }
   
+  Serial.println(F("Attempting to access Ethernet controller"));
+
+  if (ether.begin(sizeof Ethernet::buffer, mymac, 4) == 0)
+    Serial.println(F("Failed to access Ethernet controller"));
+
+  if (!ether.dhcpSetup())
+    Serial.println(F("DHCP failed"));
+
+  ether.printIp("IP:  ", ether.myip);
+  ether.printIp("GW:  ", ether.gwip);
+  ether.printIp("DNS: ", ether.dnsip);
+
+  if (!ether.dnsLookup(website))
+    Serial.println("DNS failed");
+  ether.printIp("Server: ", ether.hisip);
+
   int packet_len = gen_Data();
   rf69.send((uint8_t*)data, packet_len, rfm_power);
   
