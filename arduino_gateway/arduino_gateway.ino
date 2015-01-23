@@ -15,11 +15,13 @@ Based on UKHASnet rf69_repeater by James Coxon M6JCX
 
 //************* Misc Setup ****************/
 uint8_t n;
-uint32_t count = 1, data_interval = 2;
+uint32_t data_interval = 2;
 uint8_t data_count = 97; // 'a'
 char data[64], string_end[] = "]";
 int packet_len;
 
+uint32_t timer;
+char post_data[234], enc_data[192];
 byte Ethernet::buffer[500]; // tcp/ip send and receive buffer
 
 RFM69 rf69;
@@ -53,6 +55,14 @@ int gen_Data(){
   return sprintf(data,"%s[%s]",data,id);
 }
 
+// called when the Ethernet client request is complete
+static void my_result_cb (byte status, word off, word len) {
+  Serial.print("<<< reply ");
+  Serial.print(millis() - timer);
+  Serial.println(" ms");
+  Serial.println((const char*) Ethernet::buffer + off);
+}
+
 void setup() 
 {
   analogReference(INTERNAL); // 1.1V ADC reference
@@ -80,7 +90,7 @@ void setup()
   ether.printIp("Server: ", ether.hisip);
 
   int packet_len = gen_Data();
-  rf69.send((uint8_t*)data, packet_len, rfm_power);
+  //rf69.send((uint8_t*)data, packet_len, rfm_power);
   
   rf69.setMode(RFM69_MODE_RX);
   rf69.SetLnaMode(RF_TESTLNA_SENSITIVE);
@@ -98,33 +108,45 @@ void setup()
             Serial.print(data[j]);
         }
     }
-  
+
+  // Upload our own packet
+  EtherCard::urlEncode(data, enc_data);
+  sprintf(post_data, "origin=%s&data=%s", id, enc_data);
+  timer = millis();
+  EtherCard::httpPost(PSTR("/api/upload/"),NULL,NULL, post_data, my_result_cb);
+
+  // delay 5s before next own packet
+  data_interval = 5000 + millis();
 }
 
 void loop()
 {
-  count++;
+  //this must be called for ethercard functions to work.
+  ether.packetLoop(ether.packetReceive());
     
-    for(int i=0;i<20;i++) {
-      delay(50);
+  if (rf69.checkRx()) {
+    uint8_t buf[64];
+    uint8_t len = sizeof(buf);
+    int rx_rssi, j;
       
-      if (rf69.checkRx()) {
-        uint8_t buf[64];
-        uint8_t len = sizeof(buf);
-        int rx_rssi;
-        
-        rf69.recv(buf, &len);
-        rx_rssi = rf69.lastRssi();
-        for (int j=0; j<len; j++) {
-            Serial.print((char)buf[j]);
-            if(buf[j]==']') break;
-        }
-        Serial.print("|");
-        Serial.println(rx_rssi);
-      }
+    rf69.recv(buf, &len);
+    rx_rssi = rf69.lastRssi();
+    for (j=0; j<len; j++) {
+        Serial.print((char)buf[j]);
+        if(buf[j]==']') break;
     }
+    Serial.print("|");
+    Serial.println(rx_rssi);
+
+    // Upload received packet
+    buf[++j]='\0';
+    EtherCard::urlEncode((char *)buf, enc_data);
+    sprintf(post_data, "origin=%s&data=%s&rssi=%d", id, enc_data, rx_rssi);
+    timer = millis();
+    EtherCard::httpPost(PSTR("/api/upload/"),NULL,NULL, post_data, my_result_cb);
+  }
   
-  if (count >= data_interval){
+  if (millis() >= data_interval){
     data_count++;
 
     if(data_count > 122){
@@ -132,7 +154,7 @@ void loop()
     }
     
     packet_len = gen_Data();
-    rf69.send((uint8_t*)data, packet_len, rfm_power);
+    //rf69.send((uint8_t*)data, packet_len, rfm_power);
     
     rf69.setMode(RFM69_MODE_RX);
     rf69.SetLnaMode(RF_TESTLNA_SENSITIVE);
@@ -151,6 +173,12 @@ void loop()
         }
     }
     
-    data_interval = random(BEACON_INTERVAL, BEACON_INTERVAL+20) + count;
+    // Upload our own packet
+    EtherCard::urlEncode(data, enc_data);
+    sprintf(post_data, "origin=%s&data=%s", id, enc_data);
+    timer = millis();
+    EtherCard::httpPost(PSTR("/api/upload/"),NULL,NULL, post_data, my_result_cb);
+
+    data_interval = (random(BEACON_INTERVAL, BEACON_INTERVAL+20) * 1000) + millis();
   }
 }
