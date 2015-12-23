@@ -74,6 +74,8 @@ void sendPacket(void)
     }
     packet_len = gen_data(packet_buf);
     rf69_send((rfm_reg_t *)packet_buf, packet_len, RFM_POWER);
+    packet_buf[packet_len] = '\0';
+    printf("tx: %s\n", packet_buf);
     sequence_id++;
 }
 
