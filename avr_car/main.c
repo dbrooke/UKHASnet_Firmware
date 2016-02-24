@@ -22,6 +22,8 @@
 #include "nodeconfig.h"
 #include "uart.h"
 
+#define MSG_BUF_SIZE 32
+
 /* Zombie mode */
 typedef enum zombie_mode_t {MODE_NORMAL, MODE_ZOMBIE} zombie_mode_t;
 
@@ -29,6 +31,7 @@ typedef enum zombie_mode_t {MODE_NORMAL, MODE_ZOMBIE} zombie_mode_t;
 static float battV = 0.0;
 static uint32_t count = 1, data_interval = 2;
 static char sequence_id = 'a';
+static char msg_buf[MSG_BUF_SIZE + 1];
 static char packet_buf[64];
 static zombie_mode_t zombie_mode = MODE_NORMAL;
 
@@ -39,7 +42,7 @@ void init(void);
 uint16_t getRandBetween(const uint16_t lower, const uint16_t upper);
 void zombieMode(void);
 void loop(void);
-void sendPacket(void);
+void sendPacket(uint16_t packet_len);
 
 /**
  * Initialise internal and external peripherals, including reading config and
@@ -54,29 +57,30 @@ void init(void)
         _delay_ms(100);
 
     uart_init();
-    stdout = &mystdout;
+    stdin = &uart_input;
+    stdout = &uart_output;
 
     /* Transmit an initial packet */
-    sendPacket();
+    sendPacket(0);
 }
 
 /**
  * A wrapper function to generate a packet using gen_data() and then transmit
  * it using the RFM69 radio.
  */
-void sendPacket(void)
+void sendPacket(uint16_t packet_len)
 {
-    uint16_t packet_len;
-
+    if(packet_len == 0) {
+        packet_len = gen_data(packet_buf);
+        packet_buf[packet_len] = '\0';
+    }
+    printf("tx: %s\n", packet_buf);
+    rf69_send((rfm_reg_t *)packet_buf, packet_len, RFM_POWER);
+    sequence_id++;
     if(sequence_id > 'z')
     {
         sequence_id = 'b';
     }
-    packet_len = gen_data(packet_buf);
-    rf69_send((rfm_reg_t *)packet_buf, packet_len, RFM_POWER);
-    packet_buf[packet_len] = '\0';
-    printf("tx: %s\n", packet_buf);
-    sequence_id++;
 }
 
 /**
@@ -90,6 +94,7 @@ void zombieMode(void)
 #ifdef ENABLE_ZOMBIE_MODE
     if(battV > (ZOMBIE_THRESHOLD + ZOMBIE_HYST) && zombie_mode == MODE_ZOMBIE)
     {
+        *msg_buf = '\0';
         rf69_set_mode(RFM69_MODE_RX);
         zombie_mode = MODE_NORMAL;
 #ifdef SENSITIVE_RX
@@ -139,6 +144,7 @@ void loop(void)
     uint16_t delaytime, packet_len;
     int16_t lastrssi;
     rfm_reg_t len;
+    int c;
 
     count++;
     wdt_reset();
@@ -207,6 +213,26 @@ void loop(void)
                     rf69_send((rfm_reg_t *)packet_buf, packet_len, RFM_POWER);
                 }
             }
+            else
+            {
+                /* check for data from serial port */
+                if ((c=getchar()) != EOF ) {
+                    /* new line marks end of message but is not transmitted */
+                    if ((c == '\r') || (c== '\n')) {
+                        /* if message buffer contains data and has not overflowed send a packet */
+                        if ((strlen(msg_buf) > 1) && (strlen(msg_buf) <= MSG_BUF_SIZE)) {
+                            sendPacket(sprintf(packet_buf, "%u%c%s[%s]", NUM_REPEATS, sequence_id, msg_buf, NODE_ID));
+                        }
+                        /* reset the buffer */
+                        *msg_buf = '\0';
+                    }
+                    else
+                    {
+                        /* append character to message buffer if space available */
+                        snprintf(msg_buf, sizeof(msg_buf), "%s%c", msg_buf, c);
+                    }
+                }
+            }
         }
     }
     else
@@ -231,7 +257,7 @@ void loop(void)
     if(count >= data_interval)
     {
         /* Send a packet */
-        sendPacket();
+        sendPacket(0);
 
         /* When will we send the next beacon? */
         data_interval = getRandBetween((BEACON_INTERVAL/8), 
