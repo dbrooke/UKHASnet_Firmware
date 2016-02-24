@@ -56,9 +56,11 @@ void init(void)
     while(rf69_init() != RFM_OK)
         _delay_ms(100);
 
-    uart_init();
     stdin = &uart_input;
     stdout = &uart_output;
+
+    uart_init();
+    sei();
 
     /* Transmit an initial packet */
     sendPacket(0);
@@ -74,7 +76,7 @@ void sendPacket(uint16_t packet_len)
         packet_len = gen_data(packet_buf);
         packet_buf[packet_len] = '\0';
     }
-    printf("tx: %s\n", packet_buf);
+    printf("tx: %s\r\n", packet_buf);
     rf69_send((rfm_reg_t *)packet_buf, packet_len, RFM_POWER);
     sequence_id++;
     if(sequence_id > 'z')
@@ -185,7 +187,7 @@ void loop(void)
 
                 /* If it is a valid packet then send on serial */
                 if (end_bracket != 255)
-                    printf("rx: %s|%d\n", packet_buf, lastrssi);
+                    printf("rx: %s|%d\r\n", packet_buf, lastrssi);
 
                 /* Need to take the recieved buffer and decode it and 
                  * add a reference, under 3 conditions:
