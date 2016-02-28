@@ -53,6 +53,9 @@ void init(void)
     /* Turn off peripherals that we don't use */
     PRR |= _BV(PRTWI) | _BV(PRTIM2) | _BV(PRTIM1) | _BV(PRTIM0);
 
+    /* set PORTD4 as input */
+    DDRD &= ~_BV(DDD4);
+
     while(rf69_init() != RFM_OK)
         _delay_ms(100);
 
@@ -94,7 +97,7 @@ void sendPacket(uint16_t packet_len)
 void zombieMode(void)
 {
 #ifdef ENABLE_ZOMBIE_MODE
-    if(battV > (ZOMBIE_THRESHOLD + ZOMBIE_HYST) && zombie_mode == MODE_ZOMBIE)
+    if(bit_is_set(PIND, PD4) && zombie_mode == MODE_ZOMBIE)
     {
         *msg_buf = '\0';
         rf69_set_mode(RFM69_MODE_RX);
@@ -103,7 +106,7 @@ void zombieMode(void)
         rf69_set_lna_mode(RF_TESTLNA_SENSITIVE);
 #endif /* SENSITIVE_RX */
     }
-    else if(battV < ZOMBIE_THRESHOLD && zombie_mode == MODE_NORMAL)
+    else if(bit_is_clear(PIND, PD4) && zombie_mode == MODE_NORMAL)
     {
         rf69_set_mode(RFM69_MODE_SLEEP);
         zombie_mode = MODE_ZOMBIE;
@@ -258,15 +261,15 @@ void loop(void)
     /* Time to send a beacon? */
     if(count >= data_interval)
     {
+        /* Check if we need to enter or leave zombie mode */
+        zombieMode();
+
         /* Send a packet */
         sendPacket(0);
 
         /* When will we send the next beacon? */
         data_interval = getRandBetween((BEACON_INTERVAL/8), 
                 (BEACON_INTERVAL/8)+2) + count;
-
-        /* Check if we need to enter or leave zombie mode */
-        zombieMode();
     }
 }
 
