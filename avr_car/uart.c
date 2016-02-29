@@ -13,8 +13,6 @@
 #endif
 #include <util/setbaud.h>
 
-/* http://www.cs.mun.ca/~rod/Winter2007/4723/notes/serial/serial.html */
-
 #define UART_BUF_SIZE 64
 
 uint8_t UART_RX_head, UART_RX_tail, UART_TX_head, UART_TX_tail;
@@ -34,6 +32,10 @@ void uart_init(void) {
 
     UCSR0C = _BV(UCSZ01) | _BV(UCSZ00); /* 8-bit data */
     UCSR0B = _BV(RXEN0) | _BV(TXEN0) | _BV(RXCIE0);   /* Enable RX and TX and RX complete interrupt */
+}
+
+void uart_disable(void) {
+    UCSR0B = 0;
 }
 
 int uart_putchar(char c, FILE *stream __attribute__((unused)))

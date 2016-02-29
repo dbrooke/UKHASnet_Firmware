@@ -79,7 +79,9 @@ void sendPacket(uint16_t packet_len)
         packet_len = gen_data(packet_buf);
         packet_buf[packet_len] = '\0';
     }
-    printf("tx: %s\r\n", packet_buf);
+    if(zombie_mode == MODE_NORMAL) {
+        printf("tx: %s\r\n", packet_buf);
+    }
     rf69_send((rfm_reg_t *)packet_buf, packet_len, RFM_POWER);
     sequence_id++;
     if(sequence_id > 'z')
@@ -100,6 +102,7 @@ void zombieMode(void)
     if(bit_is_set(PIND, PD4) && zombie_mode == MODE_ZOMBIE)
     {
         *msg_buf = '\0';
+        uart_init();
         rf69_set_mode(RFM69_MODE_RX);
         zombie_mode = MODE_NORMAL;
 #ifdef SENSITIVE_RX
@@ -108,6 +111,7 @@ void zombieMode(void)
     }
     else if(bit_is_clear(PIND, PD4) && zombie_mode == MODE_NORMAL)
     {
+        uart_disable();
         rf69_set_mode(RFM69_MODE_SLEEP);
         zombie_mode = MODE_ZOMBIE;
     }
